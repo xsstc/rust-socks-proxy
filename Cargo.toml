@@ -1,0 +1,22 @@
+[package]
+name = "shadowsocks-like"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.6"
+futures = "0.3"
+bytes = "1.2"
+tokio-native-tls = "0.3"
+tokio-rustls = "0.23"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+aes = "0.7"  # AES 算法库
+block-modes = "0.8"  # 分组模式库
+hex = "0.4"  # 处理 Hex 编码
+rand = "0.8"  # 随机数生成库
+regex = "1.5"  # 正则表达式库
