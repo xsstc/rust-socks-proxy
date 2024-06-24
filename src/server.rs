@@ -3,7 +3,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::error::Error;
 
 const SERVER_PORT: u16 = 6969;
-const KEY: &[u8] = b"01234567890123456789012345678901"; // 替换为你的加密密钥
+const KEY: &[u8] = b"01234567890123456789012345678901"; 
 
 async fn handle_server(mut server_stream: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut buf = [0; 1024];

@@ -4,12 +4,12 @@ use std::error::Error;
 use tokio::net::lookup_host;
 use tokio::time::{timeout, Duration};
 
-const LOCAL_PORT: u16 = 12345; // 本地监听的 HTTP 端口
-const SOCKS_SERVER_ADDR: &str = "xxx:6969"; // 远程 SOCKS 代理服务器地址
-const KEY: &[u8] = b"01234567890123456789012345678901"; // 替换为你的加密密钥
+const LOCAL_PORT: u16 = 12345; // Local listening HTTP port
+const SOCKS_SERVER_ADDR: &str = "xxx:6969"; // Remote SOCKS proxy server address
+const KEY: &[u8] = b"01234567890123456789012345678901"; // Replace with your encryption key
 
 async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dyn Error>> {
-    // 读取 HTTP 请求头部
+    // Read HTTP request header
     let mut buf = vec![0; 4096];
     let mut total_read = 0;
 
@@ -42,14 +42,14 @@ async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dy
 
     println!("Received HTTP request:\n{}", String::from_utf8_lossy(&buf[..total_read]));
 
-    // 解析 HTTP 请求，提取目标主机和端口等信息
+    // Parse HTTP request, extract target host, port, and other information
     let (target_host, target_port) = parse_http_request(&buf[..total_read])?;
     println!("Received HTTP request for {}:{}", target_host, target_port);
 
-    // 连接远程 SOCKS 代理服务器
+    // Connect to the remote SOCKS proxy server
     let mut socks_stream = TcpStream::connect(SOCKS_SERVER_ADDR).await?;
 
-    // SOCKS5 握手
+    // SOCKS5 handshake
     socks_stream.write_all(&[0x05, 0x01, 0x00]).await?; // SOCKS5, 1 method, NO AUTH
     let mut handshake_response = [0; 2];
     socks_stream.read_exact(&mut handshake_response).await?;
@@ -57,35 +57,35 @@ async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dy
         return Err("SOCKS5 handshake failed".into());
     }
 
-    // 构造 SOCKS5 请求
+    // Construct SOCKS5 request
     let socks_request = build_socks5_request(&target_host, target_port)?;
 
-    // 发送 SOCKS5 请求到 SOCKS 代理服务器
+    // Send SOCKS5 request to the SOCKS proxy server
     socks_stream.write_all(&socks_request).await?;
 
-    // 接收 SOCKS 代理服务器的响应
-    let mut socks_response = vec![0; 10]; // 初步读取响应前 10 字节
+    // Receive response from the SOCKS proxy server
+    let mut socks_response = vec![0; 10]; // Initially read the first 10 bytes of the response
     socks_stream.read_exact(&mut socks_response).await?;
     if socks_response[1] != 0x00 {
         eprintln!("SOCKS5 request failed with code {}", socks_response[1]);
         return Ok(());
     }
 
-    // 读取目标地址类型
+    // Read target address type
     let addr_type = socks_response[3];
     if addr_type == 0x01 { // IPv4
-        socks_response.resize(10 + 4, 0); // 再读取 4 个字节
+        socks_response.resize(10 + 4, 0); // Read additional 4 bytes
     } else if addr_type == 0x04 { // IPv6
-        socks_response.resize(10 + 16, 0); // 再读取 16 个字节
-    } else if addr_type == 0x03 { // 域名
+        socks_response.resize(10 + 16, 0); // Read additional 16 bytes
+    } else if addr_type == 0x03 { // Domain name
         let domain_len = socks_stream.read_u8().await? as usize;
-        socks_response.resize(10 + domain_len + 2, 0); // 再读取域名长度和端口
+        socks_response.resize(10 + domain_len + 2, 0); // Read domain name length and port
     }
     socks_stream.read_exact(&mut socks_response[10..]).await?;
 
     println!("Connected to SOCKS proxy and target server");
 
-    // 数据转发
+    // Data forwarding
     let (mut client_read, mut client_write) = client_stream.into_split();
     let (mut socks_read, mut socks_write) = socks_stream.into_split();
 
@@ -103,7 +103,7 @@ async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dy
                 break;
             }
 
-            // 加密数据
+            // Encrypt data
             let encrypted_data = match crate::crypto::encrypt(&buffer[..n], KEY) {
                 Ok(data) => data,
                 Err(e) => {
@@ -132,7 +132,7 @@ async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dy
                 break;
             }
 
-            // 解密数据
+            // Decrypt data
             let decrypted_data = match crate::crypto::decrypt(&buffer[..n], KEY) {
                 Ok(data) => data,
                 Err(e) => {
@@ -153,17 +153,17 @@ async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dy
 fn parse_http_request(request: &[u8]) -> Result<(String, u16), Box<dyn Error>> {
     let request_str = std::str::from_utf8(request)?;
 
-    // 分割请求行和头部信息
+    // Split request line and header information
     let mut lines = request_str.lines();
     let request_line = lines.next().ok_or("Invalid HTTP request")?;
 
-    // 解析请求行
+    // Parse request line
     let mut parts = request_line.split_whitespace();
     let _method = parts.next().ok_or("Invalid HTTP request")?;
     let url = parts.next().ok_or("Invalid HTTP request")?;
     let _version = parts.next().ok_or("Invalid HTTP request")?;
 
-    // 提取主机名和端口号
+    // Extract hostname and port number
     let (mut host, mut port) = if url.starts_with("http://") {
         extract_host_and_port(&url[7..], 80)?
     } else if url.starts_with("https://") {
@@ -172,7 +172,7 @@ fn parse_http_request(request: &[u8]) -> Result<(String, u16), Box<dyn Error>> {
         (None, 80)
     };
 
-    // 如果请求行中未找到主机名，则查找 Host 头部
+    // If no hostname found in the request line, look for Host header
     if host.is_none() {
         for line in lines {
             if line.to_lowercase().starts_with("host:") {
@@ -189,7 +189,7 @@ fn parse_http_request(request: &[u8]) -> Result<(String, u16), Box<dyn Error>> {
     Ok((host, port))
 }
 
-// 从主机字符串中提取主机名和端口号
+// Extract hostname and port number from host string
 fn extract_host_and_port(host: &str, default_port: u16) -> Result<(Option<String>, u16), Box<dyn Error>> {
     let mut host_port = host.split(':');
     let host_name = host_port.next().ok_or("Invalid host format")?;
@@ -201,7 +201,7 @@ fn extract_host_and_port(host: &str, default_port: u16) -> Result<(Option<String
         default_port
     };
 
-    // 去掉路径和查询参数
+    // Remove path and query parameters
     let host_name = if let Some(pos) = host_name.find('/') {
         &host_name[..pos]
     } else {
@@ -211,18 +211,18 @@ fn extract_host_and_port(host: &str, default_port: u16) -> Result<(Option<String
     Ok((Some(host_name.to_string()), port))
 }
 
-// 构造 SOCKS5 协议请求
+// Construct SOCKS5 protocol request
 fn build_socks5_request(target_host: &str, target_port: u16) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut request = vec![0x05, 0x01, 0x00]; // SOCKS5, CONNECT, NO AUTHENTICATION REQUIRED
 
     if let Ok(ip) = target_host.parse::<std::net::Ipv4Addr>() {
-        request.push(0x01); // 地址类型: IPv4
+        request.push(0x01); // Address type: IPv4
         request.extend_from_slice(&ip.octets());
     } else if let Ok(ip) = target_host.parse::<std::net::Ipv6Addr>() {
-        request.push(0x04); // 地址类型: IPv6
+        request.push(0x04); // Address type: IPv6
         request.extend_from_slice(&ip.octets());
     } else {
-        request.push(0x03); // 地址类型: 域名
+        request.push(0x03); // Address type: Domain name
         request.push(target_host.len() as u8);
         request.extend_from_slice(target_host.as_bytes());
     }
@@ -231,9 +231,9 @@ fn build_socks5_request(target_host: &str, target_port: u16) -> Result<Vec<u8>, 
     Ok(request)
 }
 
-// 解析域名到 IP 地址
+// Resolve domain name to IP address
 async fn resolve_domain_to_ip(domain: &str) -> Result<String, Box<dyn Error>> {
-    // 使用 DNS 解析主机名
+    // Use DNS to resolve hostname
     let addrs = lookup_host((domain, 0)).await?;
     for addr in addrs {
         if let std::net::SocketAddr::V4(socket_addr) = addr {
