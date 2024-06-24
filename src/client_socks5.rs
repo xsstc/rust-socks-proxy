@@ -5,7 +5,7 @@ use tokio::net::lookup_host;
 use tokio::time::{timeout, Duration};
 
 const LOCAL_PORT: u16 = 12345; // 本地监听的 HTTP 端口
-const SOCKS_SERVER_ADDR: &str = "47.238.196.73:6969"; // 远程 SOCKS 代理服务器地址
+const SOCKS_SERVER_ADDR: &str = "xxx:6969"; // 远程 SOCKS 代理服务器地址
 const KEY: &[u8] = b"01234567890123456789012345678901"; // 替换为你的加密密钥
 
 async fn handle_http_to_socks(mut client_stream: TcpStream) -> Result<(), Box<dyn Error>> {
