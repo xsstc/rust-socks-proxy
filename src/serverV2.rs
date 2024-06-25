@@ -3,16 +3,15 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::net::lookup_host;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-
 pub async fn run_server() -> io::Result<()> {
-    // 监听特定端口
+    // Listen on a specific port
     let listener = TcpListener::bind("0.0.0.0:6969").await?;
 
     loop {
-        // 接受新的连接
+        // Accept a new connection
         let (mut socket, _) = listener.accept().await?;
 
-        // 处理连接
+        // Handle the connection
         tokio::spawn(async move {
             if let Err(e) = handle_client(&mut socket).await {
                 eprintln!("Error handling client: {:?}", e);
@@ -22,46 +21,46 @@ pub async fn run_server() -> io::Result<()> {
 }
 
 async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
-    // 读取 SOCKS5 版本和认证方法
+    // Read SOCKS5 version and authentication methods
     let mut buffer = [0u8; 2];
     socket.read_exact(&mut buffer).await?;
     if buffer[0] != 0x05 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid SOCKS version"));
     }
-    
-    // 读取客户端支持的认证方法
+
+    // Read the supported authentication methods from the client
     let n_methods = buffer[1] as usize;
     let mut methods = vec![0u8; n_methods];
     socket.read_exact(&mut methods).await?;
 
-    // 不需要认证
+    // No authentication required
     let response = [0x05, 0x00];
     socket.write_all(&response).await?;
 
-    // 读取客户端请求
+    // Read the client's request
     let mut request = [0u8; 4];
     socket.read_exact(&mut request).await?;
     // println!("Request ===> {:?}", request);
     if request[0] != 0x05 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid SOCKS version"));
     }
-    
-    // 只支持 CONNECT 请求
+
+    // Only support CONNECT requests
     if request[1] != 0x01 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Unsupported command"));
     }
 
-    // 判断地址类型
+    // Determine address type
     let addr_type = request[3];
     let target_addr = match addr_type {
         0x01 => {
-            // IPv4 地址
+            // IPv4 address
             let mut ipv4 = [0u8; 4];
             socket.read_exact(&mut ipv4).await?;
             IpAddr::V4(Ipv4Addr::new(ipv4[0], ipv4[1], ipv4[2], ipv4[3]))
         }
         0x03 => {
-            // 域名
+            // Domain name
             let mut domain_len = [0u8; 1];
             socket.read_exact(&mut domain_len).await?;
             let domain_len = domain_len[0] as usize;
@@ -69,22 +68,22 @@ async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
             if domain_len == 0 {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, "Domain length is zero"));
             }
-        
+
             let mut domain = vec![0u8; domain_len];
             socket.read_exact(&mut domain).await?;
             // println!("Domain bytes ===> {:?}", domain);
-        
-            // 尝试转换为字符串
+
+            // Try to convert to string
             match std::str::from_utf8(&domain) {
                 Ok(domain_str) => {
                     println!("Domain ===> {}", domain_str);
-        
-                    // 检查域名是否包含无效字符
+
+                    // Check if the domain contains invalid characters
                     if domain_str.contains('\0') {
                         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Domain name contains unexpected NUL byte"));
                     }
-        
-                    // DNS 解析
+
+                    // DNS resolution
                     let addr_iter = lookup_host((domain_str, 0)).await?;
                     let ip = addr_iter
                         .filter(|addr| matches!(addr, SocketAddr::V4(_)))
@@ -99,7 +98,7 @@ async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
             }
         }
         0x04 => {
-            // IPv6 地址
+            // IPv6 address
             let mut ipv6 = [0u8; 16];
             socket.read_exact(&mut ipv6).await?;
             IpAddr::V6(Ipv6Addr::new(
@@ -116,21 +115,21 @@ async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
         _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Unsupported address type")),
     };
 
-    // 读取目标端口
+    // Read the target port
     let mut port = [0u8; 2];
     socket.read_exact(&mut port).await?;
     let port = u16::from_be_bytes(port);
 
-    // 检查端口是否有效
+    // Check if the port is valid
     if port == 0 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid port number"));
     }
 
-    // 尝试连接到目标服务器
+    // Try to connect to the target server
     let target_socket = SocketAddr::new(target_addr, port);
     match TcpStream::connect(target_socket).await {
         Ok(mut remote_socket) => {
-            // 发送成功响应
+            // Send success response
             let success_response = [
                 0x05, 0x00, 0x00, 0x01,
                 0x00, 0x00, 0x00, 0x00,  // BND.ADDR
@@ -138,7 +137,7 @@ async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
             ];
             socket.write_all(&success_response).await?;
 
-            // 数据转发
+            // Data forwarding
             let (mut client_reader, mut client_writer) = socket.split();
             let (mut remote_reader, mut remote_writer) = remote_socket.split();
 
@@ -152,7 +151,7 @@ async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
                 client_writer.shutdown().await
             };
 
-            // 使用 select! 同时处理数据转发
+            // Use select! to handle data forwarding simultaneously
             tokio::select! {
                 result = client_to_remote => {
                     if let Err(e) = result {
