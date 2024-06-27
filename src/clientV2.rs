@@ -1,6 +1,7 @@
+use futures::join;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::select;
+use tokio::try_join;
 use std::net::SocketAddr;
 
 const SOCKS5_PROXY_ADDR: &str = "xx.xx.xx.xx:6969";
@@ -78,18 +79,23 @@ async fn handle_connection(mut local_socket: TcpStream) -> io::Result<()> {
         local_writer.shutdown().await
     };
 
-    // Use `select` to handle data forwarding simultaneously
-    select! {
-        result = client_to_socks => {
-            if let Err(e) = result {
-                eprintln!("Error forwarding client to socks: {:?}", e);
-            }
-        },
-        result = socks_to_client => {
-            if let Err(e) = result {
-                eprintln!("Error forwarding socks to client: {:?}", e);
-            }
-        },
+    // // Use `select` to handle data forwarding simultaneously
+    // select! {
+    //     result = client_to_socks => {
+    //         if let Err(e) = result {
+    //             eprintln!("Error forwarding client to socks: {:?}", e);
+    //         }
+    //     },
+    //     result = socks_to_client => {
+    //         if let Err(e) = result {
+    //             eprintln!("Error forwarding socks to client: {:?}", e);
+    //         }
+    //     },
+    // }
+
+
+    if let Err(e) = try_join!(client_to_socks, socks_to_client) {
+        eprintln!("Error forwarding data: {:?}", e);
     }
 
     Ok(())

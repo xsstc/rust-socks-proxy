@@ -2,6 +2,7 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::net::lookup_host;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use tokio::try_join;
 
 pub async fn run_server() -> io::Result<()> {
     // Listen on a specific port
@@ -151,19 +152,25 @@ async fn handle_client(socket: &mut TcpStream) -> io::Result<()> {
                 client_writer.shutdown().await
             };
 
-            // Use select! to handle data forwarding simultaneously
-            tokio::select! {
-                result = client_to_remote => {
-                    if let Err(e) = result {
-                        eprintln!("Error forwarding client to remote: {:?}", e);
-                    }
-                },
-                result = remote_to_client => {
-                    if let Err(e) = result {
-                        eprintln!("Error forwarding remote to client: {:?}", e);
-                    }
-                },
+            // // Use select! to handle data forwarding simultaneously
+            // tokio::select! {
+            //     result = client_to_remote => {
+            //         if let Err(e) = result {
+            //             eprintln!("Error forwarding client to remote: {:?}", e);
+            //         }
+            //     },
+            //     result = remote_to_client => {
+            //         if let Err(e) = result {
+            //             eprintln!("Error forwarding remote to client: {:?}", e);
+            //         }
+            //     },
+            // }
+
+            if let Err(e) = try_join!(client_to_remote, remote_to_client) {
+                eprintln!("Error forwarding data: {:?}", e);
             }
+
+
         }
         Err(e) => {
             eprintln!("Failed to connect to target server: {:?}", e);
